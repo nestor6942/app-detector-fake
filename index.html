@@ -1,0 +1,1536 @@
+<!DOCTYPE html>
+<html lang="es">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Detector y Advertencia de Cuenta Falsa - Gemini AI</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @keyframes pulse-custom {
+
+            0%,
+            100% {
+                opacity: 1;
+                transform: scale(1);
+            }
+
+            50% {
+                opacity: 0.88;
+                transform: scale(1.02);
+            }
+        }
+
+        .animate-pulse-slow {
+            animation: pulse-custom 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+        }
+
+        .stamp-rotate {
+            transform: rotate(-8deg);
+        }
+
+        .glass-panel {
+            background: rgba(30, 41, 59, 0.7);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .glow-red {
+            box-shadow: 0 0 25px rgba(239, 68, 68, 0.35);
+        }
+
+        .glow-indigo {
+            box-shadow: 0 0 25px rgba(99, 102, 241, 0.35);
+        }
+    </style>
+
+    <!-- Firebase SDK (Compat Version para uso sin módulos) -->
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore-compat.js"></script>
+</head>
+
+<body
+    class="bg-slate-950 text-slate-100 min-h-screen font-sans flex flex-col antialiased selection:bg-indigo-500 selection:text-white">
+
+    <header class="border-b border-slate-800 bg-slate-900/90 sticky top-0 z-50 backdrop-blur-md">
+        <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+            <div class="flex items-center gap-3">
+                <div class="p-2.5 bg-red-600/20 text-red-500 rounded-xl border border-red-500/30 glow-red">
+                    <i class="fa-solid fa-shield-cat text-2xl"></i>
+                </div>
+                <div>
+                    <h1 class="font-bold text-lg leading-tight flex items-center gap-2">
+                        Detector de Cuentas Falsas <span
+                            class="bg-indigo-500/20 text-indigo-300 text-xs px-2.5 py-0.5 rounded-full border border-indigo-500/30 font-mono">Gemini
+                            3 LLM</span>
+                    </h1>
+                    <p class="text-xs text-slate-400">Verificación multimodal, voz en vivo, documentos legales y
+                        análisis de phishing</p>
+                </div>
+            </div>
+            <div class="flex items-center gap-2">
+                <!-- User Profile / Auth -->
+                <div id="userProfileArea" class="hidden items-center gap-2 mr-2 border-r border-slate-700 pr-3">
+                    <img id="userAvatar" src="" alt="Avatar" class="w-7 h-7 rounded-full border border-slate-700">
+                    <span id="userName" class="text-xs font-semibold text-slate-200 hidden sm:inline">Usuario</span>
+                    <button onclick="logoutFirebase()" class="text-slate-400 hover:text-red-400 ml-1"
+                        title="Cerrar Sesión">
+                        <i class="fa-solid fa-right-from-bracket"></i>
+                    </button>
+                </div>
+                <button id="btnLogin" onclick="loginWithGoogle()"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 px-3 py-2 rounded-xl text-xs border border-slate-700 transition flex items-center gap-1.5 mr-2">
+                    <i class="fa-brands fa-google text-blue-400"></i> <span class="hidden sm:inline">Iniciar
+                        Sesión</span>
+                </button>
+
+                <button onclick="openSettingsModal()"
+                    class="bg-slate-800 hover:bg-slate-700 text-slate-300 p-2 rounded-xl text-xs border border-slate-700 transition flex items-center gap-1.5">
+                    <i class="fa-solid fa-gear"></i> <span class="hidden sm:inline">Ajustes / API Key</span>
+                </button>
+                <button onclick="handlePlanProClick()"
+                    class="bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-semibold px-3 py-2 rounded-xl text-xs transition flex items-center gap-1.5 shadow-lg">
+                    <i class="fa-solid fa-crown text-amber-300"></i> Plan Pro
+                </button>
+            </div>
+        </div>
+    </header>
+
+    <main class="max-w-7xl mx-auto px-4 py-6 flex-1 w-full grid grid-cols-1 lg:grid-cols-12 gap-8">
+
+        <!-- COLUMNA IZQUIERDA: Vista Previa de Imagen, Advertencia y Audio TTS -->
+        <div class="lg:col-span-5 flex flex-col gap-4">
+            <div class="glass-panel p-4 rounded-2xl flex flex-col items-center">
+                <div class="w-full flex items-center justify-between mb-3 px-1">
+                    <span class="text-xs font-semibold uppercase tracking-wider text-slate-400 flex items-center gap-2">
+                        <i class="fa-solid fa-image text-indigo-400"></i> Captura del Perfil
+                    </span>
+                    <span id="badgeOverlayType"
+                        class="text-xs px-2 py-0.5 rounded font-mono bg-red-500/20 text-red-400 border border-red-500/30">
+                        Sello: ACTIVO
+                    </span>
+                </div>
+
+                <!-- Contenedor con la Imagen y el Cartel de Advertencia -->
+                <div
+                    class="relative w-full max-w-sm rounded-xl overflow-hidden border-2 border-slate-700 shadow-2xl bg-black">
+                    <img id="targetImage"
+                        src="uploaded:564161819_2003238690515572_4727326181616681932_n.jpg-997915e5-3813-4b65-85bf-ac0f4dc024ae"
+                        alt="Captura de perfil de red social" class="w-full h-auto block select-none object-contain"
+                        onerror="this.onerror=null; this.src='https://placehold.co/400x700/1e293b/ffffff?text=Error+al+cargar+imagen';">
+
+                    <!-- SUPERPOSICIÓN DE ADVERTENCIA PERSONALIZABLE -->
+                    <div id="overlayContainer"
+                        class="absolute inset-0 flex items-center justify-center p-3 pointer-events-none transition-all duration-300">
+                        <div id="overlayBox"
+                            class="bg-red-700/95 border-4 border-red-400 text-white p-5 rounded-xl shadow-2xl text-center select-none animate-pulse-slow max-w-[92%] stamp-rotate">
+                            <h2 id="overlayTitle"
+                                class="text-2xl sm:text-3xl font-extrabold tracking-widest leading-tight uppercase drop-shadow-md">
+                                ADVERTENCIA
+                            </h2>
+                            <p id="overlaySubtitle" class="mt-1 text-base sm:text-lg font-bold drop-shadow">
+                                ESTO ES UNA CUENTA FAKE
+                            </p>
+                        </div>
+                    </div>
+                </div>
+
+                <div id="audioSection"
+                    class="w-full mt-4 bg-slate-900 border border-slate-800 rounded-xl p-3 flex flex-col gap-2">
+                    <div class="flex items-center justify-between text-xs text-slate-300 font-semibold">
+                        <span class="flex items-center gap-1.5 text-indigo-400">
+                            <i class="fa-solid fa-volume-high"></i> Alerta de Voz Generada (Gemini TTS)
+                        </span>
+                        <span id="ttsStatus" class="text-slate-500 font-mono">Sin generar</span>
+                    </div>
+                    <div class="flex items-center gap-2">
+                        <button id="playAudioBtn" onclick="playTTSAudio()" disabled
+                            class="flex-1 bg-slate-800 hover:bg-slate-700 disabled:opacity-40 text-white font-medium py-2 px-3 rounded-lg text-xs flex items-center justify-center gap-2 transition">
+                            <i class="fa-solid fa-play"></i> Reproducir Alerta
+                        </button>
+                        <button onclick="generateVoiceAlert()"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white font-medium py-2 px-3 rounded-lg text-xs flex items-center gap-1.5 transition">
+                            <i class="fa-solid fa-wand-magic-sparkles"></i> Crear Alerta de Voz
+                        </button>
+                    </div>
+                    <audio id="audioPlayer" class="hidden"></audio>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUMNA DERECHA: Pestañas de Herramientas IA Gemini -->
+        <div class="lg:col-span-7 flex flex-col gap-4">
+
+            <div class="flex items-center gap-2 border-b border-slate-800 pb-2 overflow-x-auto">
+                <button onclick="switchTab('audit')" id="tabBtn-audit"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-indigo-600 text-white shrink-0">
+                    <i class="fa-solid fa-magnifying-glass-chart"></i> Auditoría IA
+                </button>
+                <button onclick="switchTab('legal')" id="tabBtn-legal"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-file-contract"></i> Carta Legal IA
+                </button>
+                <button onclick="switchTab('phishing')" id="tabBtn-phishing"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-link-slash"></i> Escáner Phishing
+                </button>
+                <button onclick="switchTab('live')" id="tabBtn-live"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-microphone-lines"></i> Voz en Vivo Live
+                </button>
+                <button onclick="switchTab('osint')" id="tabBtn-osint"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-globe"></i> OSINT Web
+                </button>
+                <button onclick="switchTab('genimage')" id="tabBtn-genimage"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-image-polaroid"></i> Cartel Imagen
+                </button>
+                <button onclick="switchTab('chat')" id="tabBtn-chat"
+                    class="tab-btn px-3 py-2 rounded-xl text-xs sm:text-sm font-semibold flex items-center gap-1.5 transition bg-slate-800 text-slate-400 hover:bg-slate-700 hover:text-slate-200 shrink-0">
+                    <i class="fa-solid fa-user-shield"></i> Asesor Chat
+                </button>
+            </div>
+
+            <div id="tabContent-audit" class="tab-content flex flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <div class="flex items-center justify-between mb-3">
+                        <div>
+                            <h3 class="font-bold text-lg text-white">Auditoría Anti-Fraude con Gemini 3 Flash</h3>
+                            <p class="text-xs text-slate-400">Analiza automáticamente la captura mediante visión por
+                                computadora e inteligencia estructurada JSON.</p>
+                        </div>
+                        <button onclick="runAuditAnalysis()" id="btnRunAudit"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white px-4 py-2 rounded-xl text-sm font-semibold shadow-lg transition flex items-center gap-2 shrink-0">
+                            <i class="fa-solid fa-bolt"></i> Iniciar Análisis
+                        </button>
+                    </div>
+
+                    <div id="auditContainer"
+                        class="bg-slate-900/90 border border-slate-800 rounded-xl p-5 min-h-[220px] flex flex-col justify-center">
+                        <div id="auditPlaceholder" class="text-center py-6 text-slate-500">
+                            <i class="fa-solid fa-shield-halved text-4xl mb-2 text-slate-700"></i>
+                            <p class="text-sm">Haz clic en <strong>"Iniciar Análisis"</strong> para examinar métricas de
+                                seguidores, foto de perfil, username y publicaciones.</p>
+                        </div>
+
+                        <div id="auditResults" class="hidden flex-col gap-4">
+                            <div
+                                class="flex flex-col sm:flex-row items-center justify-between gap-4 bg-slate-950 p-4 rounded-xl border border-slate-800">
+                                <div>
+                                    <span class="text-xs font-mono uppercase text-slate-400">Nivel de Riesgo
+                                        Evaluado</span>
+                                    <h4 id="auditRiskLevel"
+                                        class="text-2xl font-black text-red-400 flex items-center gap-2">
+                                        ALTO RIESGO
+                                    </h4>
+                                    <p id="auditAccountHandles" class="text-xs text-slate-400 font-mono mt-0.5">
+                                        @mexxa60_ (Victor Chavez)</p>
+                                </div>
+                                <div class="text-right flex flex-col items-center sm:items-end">
+                                    <div class="text-3xl font-black text-red-500 font-mono"><span
+                                            id="auditScoreVal">0</span>%</div>
+                                    <div class="w-32 bg-slate-800 h-2 rounded-full overflow-hidden mt-1">
+                                        <div id="auditScoreBar"
+                                            class="bg-red-500 h-full transition-all duration-1000 w-0"></div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            <div>
+                                <h5 class="text-xs font-bold uppercase text-slate-400 mb-2 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-flag text-red-400"></i> Banderas Rojas Detectadas
+                                </h5>
+                                <ul id="auditRedFlags" class="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs"></ul>
+                            </div>
+
+                            <div class="bg-slate-950/60 p-3.5 rounded-lg border border-slate-800">
+                                <h5 class="text-xs font-bold uppercase text-slate-400 mb-1 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-file-contract text-indigo-400"></i> Diagnóstico
+                                </h5>
+                                <p id="auditFindings" class="text-xs text-slate-300 leading-relaxed"></p>
+                            </div>
+
+                            <div>
+                                <h5 class="text-xs font-bold uppercase text-slate-400 mb-1.5 flex items-center gap-1.5">
+                                    <i class="fa-solid fa-user-shield text-emerald-400"></i> Recomendaciones de
+                                    Seguridad
+                                </h5>
+                                <ul id="auditRecommendations"
+                                    class="list-disc list-inside text-xs text-slate-300 space-y-1"></ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-legal" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <h3 class="font-bold text-lg text-white mb-1 flex items-center gap-2">
+                        Generador de Documentos Legales <span
+                            class="bg-indigo-500/20 text-indigo-300 text-xs px-2 py-0.5 rounded-full border border-indigo-500/30 font-mono">Gemini
+                            3 LLM</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-4">Crea cartas formales de cese y desistimiento, denuncias
+                        policiales o solicitudes de baja acelerada para Meta/Instagram.</p>
+
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 mb-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Nombre del Afectado /
+                                Víctima</label>
+                            <input type="text" id="legalVictimName" value="Juan Pérez"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Cuenta Infractora</label>
+                            <input type="text" id="legalTargetHandle" value="@mexxa60_ (Victor Chavez)"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        </div>
+                    </div>
+
+                    <div class="flex flex-col sm:flex-row items-center justify-between gap-3 mb-4">
+                        <div class="w-full sm:w-auto">
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Tipo de Documento
+                                Legal</label>
+                            <select id="legalDocType"
+                                class="w-full bg-slate-950 border border-slate-800 text-xs rounded-xl p-2.5 text-slate-200">
+                                <option value="cease_desist">Carta de Cese y Desistimiento (Cierre Inmediato)</option>
+                                <option value="police_report">Plantilla de Denuncia para Policía / Fiscalía Informática
+                                </option>
+                                <option value="meta_takedown">Solicitud Formal de Baja por Usurpación para
+                                    Meta/Instagram</option>
+                            </select>
+                        </div>
+                        <button onclick="generateLegalDocument()" id="btnGenLegal"
+                            class="w-full sm:w-auto bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 shrink-0 sm:mt-5">
+                            <i class="fa-solid fa-gavel"></i> Redactar Documento
+                        </button>
+                    </div>
+
+                    <div id="legalResultBox"
+                        class="bg-slate-900 border border-slate-800 rounded-xl p-4 min-h-[180px] relative">
+                        <p id="legalPlaceholder" class="text-xs text-slate-500 text-center py-8">
+                            Selecciona las opciones y haz clic en <strong>"Redactar Documento"</strong> para generar un
+                            escrito legal formal redactado por Gemini LLM.
+                        </p>
+                        <textarea id="legalOutputText"
+                            class="hidden w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-slate-200 font-mono h-64 focus:outline-none resize-none"
+                            readonly></textarea>
+
+                        <div id="legalActions" class="hidden justify-end gap-2 mt-3">
+                            <button onclick="copyLegalText()"
+                                class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-xs px-3 py-1.5 rounded-lg border border-slate-700 transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-copy"></i> Copiar Texto
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-phishing" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <h3 class="font-bold text-lg text-white mb-1 flex items-center gap-2">
+                        Escáner Estructurado de Enlaces Phishing <span
+                            class="bg-rose-500/20 text-rose-300 text-xs px-2 py-0.5 rounded-full border border-rose-500/30 font-mono">Structured
+                            JSON</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-4">¿La cuenta te envió un enlace sospechoso en la Bio o DM?
+                        Analiza dominios falsos y robos de credenciales.</p>
+
+                    <div class="flex flex-col sm:flex-row gap-2 mb-4">
+                        <input type="text" id="phishingUrlInput"
+                            value="https://instagram-verificacion-soporte-login.net/claim-badge"
+                            placeholder="Ej: https://instagram-security-verify.com/login"
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-rose-500 font-mono">
+                        <button onclick="analyzePhishingUrl()" id="btnAnalyzePhishing"
+                            class="bg-rose-600 hover:bg-rose-500 text-white text-xs font-semibold px-4 py-2.5 rounded-xl transition flex items-center justify-center gap-2 shrink-0">
+                            <i class="fa-solid fa-shield-virus"></i> Escanear Enlace
+                        </button>
+                    </div>
+
+                    <div id="phishingResultBox"
+                        class="bg-slate-900 border border-slate-800 rounded-xl p-4 min-h-[160px]">
+                        <p class="text-xs text-slate-500 text-center py-6">Ingresa un enlace y haz clic en
+                            <strong>"Escanear Enlace"</strong> para evaluar patrones de suplantación y typosquatting.
+                        </p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-live" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <div class="flex items-center justify-between mb-2">
+                        <div>
+                            <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                                Sesión de Voz en Vivo <span
+                                    class="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30 font-mono">gemini-3.1-flash-live-preview</span>
+                            </h3>
+                            <p class="text-xs text-slate-400">Habla directamente en tiempo real con un Especialista en
+                                Ciberseguridad por micrófono.</p>
+                        </div>
+                    </div>
+
+                    <div
+                        class="bg-slate-900 border border-slate-800 rounded-xl p-5 flex flex-col items-center justify-center gap-4 text-center my-2">
+                        <div id="liveStatusIndicator"
+                            class="w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-500 transition-all duration-300">
+                            <i class="fa-solid fa-microphone text-2xl"></i>
+                        </div>
+                        <div>
+                            <h4 id="liveStateTitle" class="font-bold text-slate-200 text-sm">Sesión Desconectada</h4>
+                            <p id="liveStateSub" class="text-xs text-slate-400 max-w-xs mt-1">Conéctate para consultar a
+                                viva voz sobre estafas, extorsiones o reportes.</p>
+                        </div>
+
+                        <div class="flex gap-3">
+                            <button id="btnStartLive" onclick="toggleLiveSession()"
+                                class="bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg">
+                                <i class="fa-solid fa-phone"></i> Iniciar Llamada IA
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="liveTranscriptionBox"
+                        class="bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs font-mono text-slate-300 h-28 overflow-y-auto hidden">
+                        <span class="text-slate-500 italic block mb-1">--- Transcripción en tiempo real ---</span>
+                        <div id="liveTranscripts"></div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-osint" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                        Rastreo OSINT Web <span
+                            class="bg-cyan-500/20 text-cyan-300 text-xs px-2 py-0.5 rounded-full border border-cyan-500/30 font-mono">Google
+                            Search Grounding</span>
+                    </h3>
+                    <p class="text-xs text-slate-400">Verifica en tiempo real si el usuario o nombre figura en reportes
+                        de estafas, foros o bases de datos de ciberseguridad.</p>
+
+                    <div class="flex gap-2 my-3">
+                        <input type="text" id="osintQueryInput"
+                            value="mexxa60_ victor chavez estafa cuenta falsa instagram"
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <button onclick="runOsintSearch()" id="btnRunOsint"
+                            class="bg-cyan-600 hover:bg-cyan-500 text-white text-xs font-semibold px-4 rounded-xl flex items-center gap-1.5 transition shrink-0">
+                            <i class="fa-solid fa-magnifying-glass font-bold"></i> Buscar en Web
+                        </button>
+                    </div>
+
+                    <div id="osintResultBox" class="bg-slate-900 border border-slate-800 rounded-xl p-4 min-h-[160px]">
+                        <p class="text-xs text-slate-500 text-center py-6">Haz clic en <strong>"Buscar en Web"</strong>
+                            para realizar un rastreo en línea con Google Search Grounding.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-genimage" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl">
+                    <h3 class="font-bold text-lg text-white mb-1 flex items-center gap-2">
+                        Generador y Editor Multiturno de Imágenes <span
+                            class="bg-emerald-500/20 text-emerald-300 text-xs px-2 py-0.5 rounded-full border border-emerald-500/30 font-mono">Gemini
+                            3.1 Flash Image</span>
+                    </h3>
+                    <p class="text-xs text-slate-400 mb-3">Crea imágenes de advertencia o modifica gráficos generados en
+                        conversaciones multiturno.</p>
+
+                    <div class="flex flex-col gap-3">
+                        <div>
+                            <label class="block text-xs font-semibold text-slate-300 mb-1">Prompt / Instrucción de
+                                Edición</label>
+                            <textarea id="genImagePrompt" rows="2"
+                                class="w-full bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-slate-200 focus:outline-none focus:border-indigo-500 resize-none">Un cartel cibernético de advertencia de seguridad con colores rojo y negro, texto brillante que dice 'ALERTA: CUENTA FALSA DETECTADA', estilo futurista de ciberseguridad, alta resolución.</textarea>
+                        </div>
+
+                        <div class="flex items-center justify-between gap-3">
+                            <div class="flex items-center gap-2">
+                                <label class="text-xs text-slate-400">Formato:</label>
+                                <select id="genImageAspect"
+                                    class="bg-slate-950 border border-slate-800 text-xs rounded-lg p-1.5 text-slate-200">
+                                    <option value="1:1">1:1 (Cuadrado)</option>
+                                    <option value="16:9" selected>16:9 (Horizontal)</option>
+                                    <option value="9:16">9:16 (Stories/Vertical)</option>
+                                </select>
+                            </div>
+
+                            <button onclick="generateAwarenessImage()" id="btnGenImage"
+                                class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl flex items-center gap-2 transition">
+                                <i class="fa-solid fa-palette"></i> Generar / Modificar
+                            </button>
+                        </div>
+                    </div>
+
+                    <div id="genImageResult"
+                        class="mt-4 bg-slate-900 border border-slate-800 rounded-xl p-4 flex flex-col items-center justify-center min-h-[200px]">
+                        <p class="text-xs text-slate-500 text-center">Haz clic en <strong>"Generar / Modificar"</strong>
+                            para crear o modificar gráficos de seguridad.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tabContent-chat" class="tab-content hidden flex-col gap-4">
+                <div class="glass-panel p-5 rounded-2xl flex flex-col h-[480px]">
+                    <div class="mb-3 border-b border-slate-800 pb-2">
+                        <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                            <i class="fa-solid fa-robot text-indigo-400"></i> Asesor de Ciberseguridad Gemini
+                        </h3>
+                        <p class="text-xs text-slate-400">Haz preguntas sobre cómo denunciar cuentas, proteger tus redes
+                            o presentar evidencias legales.</p>
+                    </div>
+
+                    <div id="chatHistoryBox"
+                        class="flex-1 overflow-y-auto bg-slate-950 border border-slate-800 rounded-xl p-3 flex flex-col gap-2 mb-3">
+                        <div
+                            class="bg-indigo-950/60 border border-indigo-800/40 p-2.5 rounded-xl text-xs text-indigo-200">
+                            <strong><i class="fa-solid fa-shield"></i> Asesor IA:</strong> Hola, soy tu asistente de
+                            ciberseguridad. ¿Necesitas ayuda sobre cómo denunciar esta cuenta en Instagram, recopilar
+                            capturas de prueba o proteger tus cuentas personales?
+                        </div>
+                    </div>
+
+                    <div class="flex gap-2">
+                        <input type="text" id="chatInput"
+                            placeholder="Ej: ¿Cómo denuncio esta cuenta en Instagram correctamente?"
+                            onkeydown="if(event.key==='Enter') sendSecurityChatMessage()"
+                            class="flex-1 bg-slate-950 border border-slate-800 rounded-xl p-2.5 text-xs text-white focus:outline-none focus:border-indigo-500">
+                        <button onclick="sendSecurityChatMessage()" id="btnSendChat"
+                            class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 rounded-xl flex items-center gap-1.5 transition shrink-0">
+                            <i class="fa-solid fa-paper-plane"></i> Enviar
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+    </main>
+
+    <!-- MODAL DE CONFIGURACIÓN / API KEY -->
+    <div id="settingsModal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="glass-panel max-w-md w-full p-6 rounded-2xl border border-slate-700 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-lg text-white flex items-center gap-2">
+                    <i class="fa-solid fa-gear text-indigo-400"></i> Ajustes de Gemini API
+                </h3>
+                <button onclick="closeSettingsModal()" class="text-slate-400 hover:text-white text-lg"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="text-xs text-slate-400 mb-3">Ingresa tu clave de API de Google Gemini en caso de querer usar tus
+                propios límites o cuota personalizada.</p>
+            <input type="password" id="customApiKeyInput" placeholder="AIzaSy..."
+                class="w-full bg-slate-950 border border-slate-800 rounded-xl p-3 text-xs text-white font-mono focus:outline-none focus:border-indigo-500 mb-4">
+            <div class="flex justify-end gap-2">
+                <button onclick="saveCustomApiKey()"
+                    class="bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition">Guardar
+                    Clave</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE PLANES PRO Y MONETIZACIÓN -->
+    <div id="plansModal"
+        class="fixed inset-0 bg-black/80 backdrop-blur-sm z-50 flex items-center justify-center hidden p-4">
+        <div class="glass-panel max-w-2xl w-full p-6 rounded-2xl border border-slate-700 shadow-2xl">
+            <div class="flex justify-between items-center mb-4">
+                <h3 class="font-bold text-xl text-white flex items-center gap-2">
+                    <i class="fa-solid fa-crown text-amber-400"></i> Planes Comerciales y Licencias
+                </h3>
+                <button onclick="closePlansModal()" class="text-slate-400 hover:text-white text-lg"><i
+                        class="fa-solid fa-xmark"></i></button>
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 my-4">
+                <div class="bg-slate-900 border border-slate-800 p-5 rounded-xl flex flex-col justify-between">
+                    <div>
+                        <span class="text-xs font-bold text-indigo-400 uppercase tracking-wider">Plan Creadores</span>
+                        <h4 class="text-2xl font-black text-white mt-1">$9.99 <span
+                                class="text-xs font-normal text-slate-400">/ mes</span></h4>
+                        <ul class="text-xs text-slate-300 space-y-2 mt-4">
+                            <li><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Auditorías multimodales
+                                ilimitadas</li>
+                            <li><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Generación de cartas legales
+                            </li>
+                            <li><i class="fa-solid fa-check text-emerald-400 mr-2"></i> Escáner de phishing avanzado
+                            </li>
+                        </ul>
+                    </div>
+                    <button onclick="simulateCheckout('monthly')"
+                        class="mt-6 w-full bg-indigo-600 hover:bg-indigo-500 text-white font-bold py-2 text-xs rounded-xl transition">Suscribirse
+                        Pro</button>
+                </div>
+
+                <div
+                    class="bg-slate-900 border-2 border-amber-500/50 p-5 rounded-xl flex flex-col justify-between relative overflow-hidden">
+                    <span
+                        class="absolute top-3 right-3 bg-amber-500/20 text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-amber-500/30">MÁS
+                        POPULAR</span>
+                    <div>
+                        <span class="text-xs font-bold text-amber-400 uppercase tracking-wider">Plan Agencia /
+                            Empresa</span>
+                        <h4 class="text-2xl font-black text-white mt-1">$29.99 <span
+                                class="text-xs font-normal text-slate-400">/ mes</span></h4>
+                        <ul class="text-xs text-slate-300 space-y-2 mt-4">
+                            <li><i class="fa-solid fa-check text-amber-400 mr-2"></i> Todo lo del plan Creadores</li>
+                            <li><i class="fa-solid fa-check text-amber-400 mr-2"></i> Sesiones de Voz en Vivo ilimitadas
+                            </li>
+                            <li><i class="fa-solid fa-check text-amber-400 mr-2"></i> Marca de agua personalizada</li>
+                        </ul>
+                    </div>
+                    <button onclick="simulateCheckout('lifetime')"
+                        class="mt-6 w-full bg-gradient-to-r from-amber-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-white font-bold py-2 text-xs rounded-xl transition shadow-lg">Obtener
+                        Licencia Agencia</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL DE UPGRADE POR LÍMITE (429) -->
+    <div id="upgradeModal"
+        class="fixed inset-0 bg-black/90 backdrop-blur-md z-50 flex items-center justify-center hidden p-4">
+        <div
+            class="glass-panel max-w-sm w-full p-6 rounded-2xl border border-indigo-500/50 shadow-[0_0_40px_rgba(99,102,241,0.2)] text-center relative overflow-hidden">
+            <div class="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-indigo-500 to-purple-500"></div>
+            <div
+                class="w-16 h-16 mx-auto bg-indigo-500/20 rounded-full flex items-center justify-center mb-4 border border-indigo-500/30">
+                <i class="fa-solid fa-gem text-3xl text-indigo-400"></i>
+            </div>
+            <h3 class="font-black text-xl text-white mb-2">Límite Alcanzado</h3>
+            <p class="text-sm text-slate-300 mb-6">Has alcanzado el límite de consultas gratuitas. Actualiza al Plan Pro
+                para continuar usando la IA sin restricciones.</p>
+            <div class="flex flex-col gap-3">
+                <button onclick="closeUpgradeModal(true)"
+                    class="w-full bg-gradient-to-r from-indigo-600 to-purple-600 hover:from-indigo-500 hover:to-purple-500 text-white font-bold py-3 rounded-xl transition shadow-lg flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-crown text-amber-300"></i> Hacer Upgrade
+                </button>
+                <button onclick="closeUpgradeModal(false)"
+                    class="text-xs text-slate-400 hover:text-white transition">Cerrar y continuar en modo Demo</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- FIREBASE CONFIGURATION ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyBwnBkkjNwmvpm1Qq9zmdGbX185tY8Rod4",
+            authDomain: "advertencia-fake-app.firebaseapp.com",
+            projectId: "advertencia-fake-app",
+            storageBucket: "advertencia-fake-app.firebasestorage.app",
+            messagingSenderId: "1093133529035",
+            appId: "1:1093133529035:web:463c663345328e4e15104e",
+            measurementId: "G-S41HF6894Y"
+        };
+
+        if (!firebase.apps.length) {
+            firebase.initializeApp(firebaseConfig);
+        }
+        const auth = firebase.auth();
+        const db = firebase.firestore();
+
+        let currentUser = null;
+        let isUserPro = false;
+
+        auth.onAuthStateChanged(async (user) => {
+            currentUser = user;
+            const profileArea = document.getElementById('userProfileArea');
+            const btnLogin = document.getElementById('btnLogin');
+
+            if (user) {
+                profileArea.classList.remove('hidden');
+                profileArea.classList.add('flex');
+                btnLogin.classList.add('hidden');
+
+                document.getElementById('userAvatar').src = user.photoURL || 'https://via.placeholder.com/150';
+                document.getElementById('userName').textContent = user.displayName || 'Usuario';
+
+                try {
+                    const doc = await db.collection('usuarios').doc(user.uid).get();
+                    if (doc.exists && doc.data().isPro === true) {
+                        isUserPro = true;
+                    } else {
+                        isUserPro = false;
+                    }
+                } catch (e) {
+                    console.log("Error leyendo perfil de Firestore. Revisa tus reglas de DB.", e);
+                    isUserPro = false;
+                }
+            } else {
+                profileArea.classList.add('hidden');
+                profileArea.classList.remove('flex');
+                btnLogin.classList.remove('hidden');
+                isUserPro = false;
+            }
+        });
+
+        function loginWithGoogle() {
+            const provider = new firebase.auth.GoogleAuthProvider();
+            auth.signInWithPopup(provider).catch(err => {
+                console.error("Error en login:", err);
+                if (err.code === "auth/invalid-api-key" || err.code === "auth/network-request-failed" || err.code === "auth/unauthorized-domain") {
+                    alert("Asegúrate de configurar Firebase en firebaseConfig y habilitar los dominios en la consola.");
+                } else {
+                    alert("Error de autenticación: " + err.message);
+                }
+            });
+        }
+
+        function logoutFirebase() {
+            auth.signOut();
+        }
+
+        function handlePlanProClick() {
+            if (isUserPro) {
+                alert("¡Felicidades! Ya tienes una suscripción Pro activa en tu cuenta.");
+            } else {
+                openPlansModal();
+            }
+        }
+
+        async function guardarHistorial(tipo, datos) {
+            if (!currentUser) return;
+            try {
+                await db.collection('historial_analisis').add({
+                    uid: currentUser.uid,
+                    tipo: tipo,
+                    datos: datos,
+                    fecha: firebase.firestore.FieldValue.serverTimestamp()
+                });
+            } catch (e) {
+                console.error("No se pudo guardar el historial.", e);
+            }
+        }
+        // --- FIN FIREBASE CONFIGURATION ---
+
+        let upgradeModalCallback = null;
+        function openUpgradeModal(callback) {
+            upgradeModalCallback = callback;
+            document.getElementById('upgradeModal').classList.remove('hidden');
+        }
+        function closeUpgradeModal(wantsUpgrade) {
+            document.getElementById('upgradeModal').classList.add('hidden');
+            if (wantsUpgrade) {
+                simulateCheckout('Pro');
+            } else if (upgradeModalCallback) {
+                upgradeModalCallback();
+            }
+            upgradeModalCallback = null;
+        }
+
+        let customApiKey = localStorage.getItem('GEMINI_CUSTOM_KEY') || "";
+        function getApiKey() {
+            return customApiKey || "";
+        }
+
+        const MODEL_TEXT = 'gemini-3-flash-preview';
+        const MODEL_TTS = 'gemini-2.5-flash-preview-tts';
+        const MODEL_IMAGE = 'gemini-3.1-flash-image-preview';
+        const MODEL_LIVE = 'gemini-3.1-flash-live-preview';
+
+        let audioUrl = null;
+        let chatConversationHistory = [];
+        let imageConversationHistory = [];
+        let isLiveActive = false;
+        let liveSession = null;
+
+        async function fetchGeminiWithBackoff(apiUrl, payload, retries = 5, delay = 1000) {
+            for (let i = 0; i < retries; i++) {
+                try {
+                    const response = await fetch(apiUrl, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (response.status === 429 && i < retries - 1) {
+                        await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                        continue;
+                    }
+
+                    if (!response.ok) {
+                        const errBody = await response.text();
+                        throw new Error(`API Error (${response.status}): ${errBody}`);
+                    }
+
+                    return await response.json();
+                } catch (err) {
+                    if (i === retries - 1) throw err;
+                    await new Promise(res => setTimeout(res, delay * Math.pow(2, i)));
+                }
+            }
+        }
+
+        async function getTargetImageBase64() {
+            const imgEl = document.getElementById('targetImage');
+            return new Promise((resolve) => {
+                if (imgEl.complete && imgEl.naturalWidth !== 0) {
+                    processCanvas();
+                } else {
+                    imgEl.onload = processCanvas;
+                }
+
+                function processCanvas() {
+                    try {
+                        const canvas = document.createElement('canvas');
+                        canvas.width = imgEl.naturalWidth || 400;
+                        canvas.height = imgEl.naturalHeight || 700;
+                        const ctx = canvas.getContext('2d');
+                        ctx.drawImage(imgEl, 0, 0, canvas.width, canvas.height);
+                        const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+                        resolve(dataUrl.split(',')[1]);
+                    } catch (e) {
+                        resolve(null);
+                    }
+                }
+            });
+        }
+
+        function switchTab(tabName) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.add('hidden'));
+            document.querySelectorAll('.tab-btn').forEach(el => {
+                el.classList.remove('bg-indigo-600', 'text-white');
+                el.classList.add('bg-slate-800', 'text-slate-400');
+            });
+
+            document.getElementById(`tabContent-${tabName}`).classList.remove('hidden');
+            const activeBtn = document.getElementById(`tabBtn-${tabName}`);
+            activeBtn.classList.remove('bg-slate-800', 'text-slate-400');
+            activeBtn.classList.add('bg-indigo-600', 'text-white');
+        }
+
+        function openSettingsModal() { document.getElementById('settingsModal').classList.remove('hidden'); }
+        function closeSettingsModal() { document.getElementById('settingsModal').classList.add('hidden'); }
+        function openPlansModal() { document.getElementById('plansModal').classList.remove('hidden'); }
+        function closePlansModal() { document.getElementById('plansModal').classList.add('hidden'); }
+
+        function saveCustomApiKey() {
+            const val = document.getElementById('customApiKeyInput').value.trim();
+            customApiKey = val;
+            localStorage.setItem('GEMINI_CUSTOM_KEY', val);
+            alert("Clave de API guardada correctamente.");
+            closeSettingsModal();
+        }
+
+        async function simulateCheckout(plan) {
+            closePlansModal();
+
+            // Determinar tipo: plan 'Pro Mensual' = monthly, 'Pro Lifetime' = lifetime
+            const planType = plan === 'lifetime' ? 'lifetime' : 'monthly';
+
+            const toastId = 'toast-' + Date.now();
+            const toast = document.createElement('div');
+            toast.id = toastId;
+            toast.className = "fixed bottom-5 right-5 bg-slate-900 border border-indigo-500/50 text-white px-6 py-4 rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.3)] z-[100] flex items-center gap-3 transition-all duration-300 transform translate-y-0 opacity-100";
+            toast.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 text-xl"></i><div><p class="font-bold text-sm">Procesando pago seguro</p><p class="text-xs text-slate-400">Conectando con Stripe...</p></div>`;
+            document.body.appendChild(toast);
+
+            try {
+                const response = await fetch('/create-checkout-session', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ planType })
+                });
+                const data = await response.json();
+
+                toast.classList.add('translate-y-10', 'opacity-0');
+                setTimeout(() => toast.remove(), 300);
+
+                if (data.url) {
+                    window.location.href = data.url; // Redirige a Stripe Checkout
+                } else {
+                    throw new Error(data.error || 'No se recibió URL de pago.');
+                }
+            } catch (err) {
+                toast.innerHTML = `<i class="fa-solid fa-triangle-exclamation text-red-400 text-xl"></i><div><p class="font-bold text-sm text-red-400">Error al conectar</p><p class="text-xs text-slate-400">${err.message}</p></div>`;
+                setTimeout(() => {
+                    toast.classList.add('translate-y-10', 'opacity-0');
+                    setTimeout(() => toast.remove(), 300);
+                }, 3000);
+            }
+        }
+
+        async function runAuditAnalysis() {
+            const btn = document.getElementById('btnRunAudit');
+            const placeholder = document.getElementById('auditPlaceholder');
+            const results = document.getElementById('auditResults');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Analizando...`;
+
+            placeholder.innerHTML = `
+                <div class="flex flex-col items-center py-6">
+                    <div class="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p class="text-xs text-indigo-300 font-semibold">Gemini 3 Flash evaluando captura de pantalla...</p>
+                    <p class="text-[11px] text-slate-500 mt-1">Verificando número de publicaciones, seguidores, foto y patrones de spam.</p>
+                </div>
+            `;
+            placeholder.classList.remove('hidden');
+            results.classList.add('hidden');
+
+            try {
+                const imageBase64 = await getTargetImageBase64();
+
+                const auditSchema = {
+                    type: "OBJECT",
+                    properties: {
+                        riskScore: { type: "INTEGER", description: "Porcentaje de riesgo de 0 a 100" },
+                        riskLevel: { type: "STRING", description: "ALTO RIESGO, RIESGO MEDIO, BAJO RIESGO" },
+                        accountHandle: { type: "STRING", description: "Nombre de usuario encontrado en la foto (ej: mexxa60_)" },
+                        profileName: { type: "STRING", description: "Nombre visible (ej: victor chavez)" },
+                        redFlags: {
+                            type: "ARRAY",
+                            items: { type: "STRING" },
+                            description: "Lista de observaciones sospechosas"
+                        },
+                        findings: { type: "STRING", description: "Explicación clara de por qué este perfil es sospechoso" },
+                        recommendations: {
+                            type: "ARRAY",
+                            items: { type: "STRING" },
+                            description: "Acciones recomendadas de seguridad"
+                        }
+                    },
+                    required: ["riskScore", "riskLevel", "accountHandle", "profileName", "redFlags", "findings", "recommendations"]
+                };
+
+                const prompt = "Analiza detalladamente esta captura de perfil de red social. Revisa publicaciones, seguidores, seguidos, foto de avatar y etiquetas. Genera un reporte de auditoría anti-fraude estructurado en JSON.";
+
+                const parts = [{ text: prompt }];
+                if (imageBase64) {
+                    parts.push({
+                        inlineData: { mimeType: "image/jpeg", data: imageBase64 }
+                    });
+                }
+
+                const payload = {
+                    contents: [{ role: "user", parts: parts }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: auditSchema
+                    }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${getApiKey()}`;
+                const data = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const jsonText = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (!jsonText) throw new Error("Respuesta inválida del servidor Gemini.");
+
+                const auditData = JSON.parse(jsonText);
+
+                document.getElementById('auditRiskLevel').textContent = auditData.riskLevel || 'ALTO RIESGO';
+                document.getElementById('auditAccountHandles').textContent = `@${auditData.accountHandle || 'desconocido'} (${auditData.profileName || ''})`;
+                document.getElementById('auditScoreVal').textContent = auditData.riskScore || 90;
+
+                setTimeout(() => {
+                    document.getElementById('auditScoreBar').style.width = `${auditData.riskScore || 90}%`;
+                }, 100);
+
+                const redFlagsUl = document.getElementById('auditRedFlags');
+                redFlagsUl.innerHTML = auditData.redFlags.map(flag => `
+                    <li class="bg-red-950/40 border border-red-900/40 p-2 rounded-lg flex items-start gap-1.5 text-red-200">
+                        <i class="fa-solid fa-triangle-exclamation text-red-400 mt-0.5 shrink-0"></i>
+                        <span>${flag}</span>
+                    </li>
+                `).join('');
+
+                document.getElementById('auditFindings').textContent = auditData.findings;
+
+                const recsUl = document.getElementById('auditRecommendations');
+                recsUl.innerHTML = auditData.recommendations.map(rec => `
+                    <li class="flex items-center gap-1.5 text-emerald-300">
+                        <i class="fa-solid fa-circle-check text-emerald-500 text-[10px]"></i> ${rec}
+                    </li>
+                `).join('');
+
+                placeholder.classList.add('hidden');
+                results.classList.remove('hidden');
+                results.classList.add('flex');
+
+                guardarHistorial('auditoria', auditData);
+
+            } catch (err) {
+                console.error("Error en Auditoría:", err);
+                placeholder.innerHTML = `
+                    <div class="text-center py-4 text-red-400">
+                        <i class="fa-solid fa-circle-exclamation text-2xl mb-1"></i>
+                        <p class="text-xs font-semibold">Error al conectar con Gemini AI</p>
+                        <p class="text-[11px] text-slate-500 mt-0.5">${err.message}</p>
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-bolt"></i> Iniciar Análisis`;
+            }
+        }
+
+        async function generateLegalDocument() {
+            const victim = document.getElementById('legalVictimName').value || "Afectado";
+            const target = document.getElementById('legalTargetHandle').value || "@mexxa60_";
+            const docType = document.getElementById('legalDocType').value;
+            const btn = document.getElementById('btnGenLegal');
+            const placeholder = document.getElementById('legalPlaceholder');
+            const textarea = document.getElementById('legalOutputText');
+            const actions = document.getElementById('legalActions');
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Redactando...`;
+
+            try {
+                const systemPrompt = "Eres un abogado senior especializado en derecho informático, suplantación de identidad y ciberdelitos. Redacta un documento legal formal, estructurado y listo para presentar en español.";
+                const prompt = `Genera un documento de tipo: "${docType}" contra la cuenta sospechosa/fake: "${target}", en representación de la víctima: "${victim}".
+Incluye secciones formales: Encabezado, Hechos y Evidencias, Fundamentos Jurídicos Generales y Petitorios de baja/cese.`;
+
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${getApiKey()}`;
+                const data = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const resText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No se pudo generar el documento.";
+
+                placeholder.classList.add('hidden');
+                textarea.value = resText;
+                textarea.classList.remove('hidden');
+                actions.classList.remove('hidden');
+                actions.classList.add('flex');
+
+            } catch (err) {
+                console.error("Error legal:", err);
+                placeholder.textContent = `Error al redactar el documento: ${err.message}`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-gavel"></i> Redactar Documento`;
+            }
+        }
+
+        function copyLegalText() {
+            const text = document.getElementById('legalOutputText').value;
+            navigator.clipboard.writeText(text);
+            alert("Documento copiado al portapapeles.");
+        }
+
+        async function analyzePhishingUrl() {
+            const urlInput = document.getElementById('phishingUrlInput').value.trim();
+            const btn = document.getElementById('btnAnalyzePhishing');
+            const resultBox = document.getElementById('phishingResultBox');
+
+            if (!urlInput) return;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Escaneando...`;
+
+            let domain = "";
+            let isHttp = false;
+            let hasIpAddress = false;
+            let subdomainsCount = 0;
+
+            try {
+                // 1. Validación local y extracción de información básica
+                let parsedUrl;
+                try {
+                    parsedUrl = new URL(urlInput.startsWith('http') ? urlInput : `https://${urlInput}`);
+                } catch (e) {
+                    throw new Error("Formato de URL inválido. Por favor, ingresa un enlace válido.");
+                }
+
+                domain = parsedUrl.hostname;
+                isHttp = parsedUrl.protocol === 'http:';
+                hasIpAddress = /^(\d{1,3}\.){3}\d{1,3}$/.test(domain);
+                subdomainsCount = domain.split('.').length - 2;
+
+                // Palabras clave comunes en phishing
+                const suspiciousKeywords = ['login', 'verify', 'update', 'secure', 'account', 'support', 'auth', 'claim'];
+                const foundKeywords = suspiciousKeywords.filter(kw => urlInput.toLowerCase().includes(kw));
+
+                const phishingSchema = {
+                    type: "OBJECT",
+                    properties: {
+                        isPhishing: { type: "BOOLEAN" },
+                        riskScore: { type: "INTEGER" },
+                        detectedPatterns: { type: "ARRAY", items: { type: "STRING" } },
+                        targetedBrand: { type: "STRING" },
+                        explanation: { type: "STRING" }
+                    },
+                    required: ["isPhishing", "riskScore", "detectedPatterns", "targetedBrand", "explanation"]
+                };
+
+                // 2. Enriquecer el prompt con los hallazgos locales
+                const prompt = `Analiza la siguiente URL sospechosa enviada por una cuenta fake: "${parsedUrl.href}". 
+Información pre-procesada:
+- Dominio extraído: ${domain}
+- Usa HTTP (no seguro): ${isHttp}
+- Usa dirección IP en lugar de dominio: ${hasIpAddress}
+- Cantidad de subdominios: ${subdomainsCount > 0 ? subdomainsCount : 0}
+- Palabras clave sospechosas encontradas: ${foundKeywords.length > 0 ? foundKeywords.join(', ') : 'Ninguna'}
+
+Evalúa los patrones pre-procesados, posibles casos de typosquatting, dominios falsos, y robo de credenciales. Responde en JSON estructurado.`;
+
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: prompt }] }],
+                    generationConfig: {
+                        responseMimeType: "application/json",
+                        responseSchema: phishingSchema
+                    }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${getApiKey()}`;
+                const data = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const resJson = JSON.parse(data.candidates?.[0]?.content?.parts?.[0]?.text || "{}");
+
+                // Combinar patrones detectados por IA con los locales para mostrar al usuario
+                const allPatterns = new Set(resJson.detectedPatterns || []);
+                if (isHttp) allPatterns.add("Conexión no segura (HTTP en lugar de HTTPS)");
+                if (hasIpAddress) allPatterns.add("Uso de dirección IP oculta dominio real");
+                if (subdomainsCount > 2) allPatterns.add("Exceso de subdominios para ocultar origen");
+
+                resultBox.innerHTML = `
+                    <div class="flex flex-col gap-3">
+                        <div class="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+                            <div>
+                                <span class="text-xs uppercase text-slate-400 font-mono">Diagnóstico de URL: <span class="text-indigo-300 font-semibold">${domain}</span></span>
+                                <h4 class="text-lg font-bold ${resJson.isPhishing ? 'text-red-400' : 'text-emerald-400'}">
+                                    ${resJson.isPhishing ? '🚨 ENLACE DE PHISHING / PELIGROSO' : '✅ DOMINIO LEGÍTIMO'}
+                                </h4>
+                            </div>
+                            <span class="text-2xl font-mono font-black ${resJson.riskScore > 50 ? 'text-red-400' : 'text-emerald-400'}">${resJson.riskScore}% Riesgo</span>
+                        </div>
+                        <p class="text-xs text-slate-300 leading-relaxed">${resJson.explanation}</p>
+                        <div>
+                            <span class="text-[11px] uppercase font-bold text-slate-400">Patrones Sospechosos Detectados:</span>
+                            <ul class="list-disc list-inside text-xs text-rose-300 mt-1">
+                                ${Array.from(allPatterns).length > 0 ? Array.from(allPatterns).map(p => `<li>${p}</li>`).join('') : '<li class="text-emerald-300">Sin patrones obvios detectados</li>'}
+                            </ul>
+                        </div>
+                    </div>
+                `;
+
+                guardarHistorial('phishing', resJson);
+
+            } catch (err) {
+                console.error("Error phishing:", err);
+                if (err.message && err.message.includes("429") && !isUserPro) {
+                    openUpgradeModal(() => {
+                        const mockResJson = {
+                            isPhishing: true,
+                            riskScore: 88,
+                            detectedPatterns: ["Uso de tácticas comunes de extorsión", "Dominio registrado recientemente", "Simulación de marca (Typosquatting)"],
+                            explanation: "[MODO DEMO] El enlace presenta múltiples banderas rojas clásicas de una campaña de phishing orientada al robo de identidad y credenciales. Se recomienda evitar interactuar bajo ninguna circunstancia."
+                        };
+                        const allPatterns = new Set(mockResJson.detectedPatterns);
+                        if (isHttp) allPatterns.add("Conexión no segura (HTTP en lugar de HTTPS)");
+                        if (hasIpAddress) allPatterns.add("Uso de dirección IP oculta dominio real");
+                        if (subdomainsCount > 2) allPatterns.add("Exceso de subdominios para ocultar origen");
+
+                        resultBox.innerHTML = `
+                            <div class="flex flex-col gap-3 opacity-90 relative">
+                                <div class="absolute -top-3 -right-3 bg-indigo-500/20 text-indigo-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-indigo-500/30">DATOS SIMULADOS</div>
+                                <div class="flex items-center justify-between bg-slate-950 p-3 rounded-xl border border-slate-800">
+                                    <div>
+                                        <span class="text-xs uppercase text-slate-400 font-mono">Diagnóstico de URL: <span class="text-indigo-300 font-semibold">${domain}</span></span>
+                                        <h4 class="text-lg font-bold text-red-400">🚨 ENLACE DE PHISHING / PELIGROSO</h4>
+                                    </div>
+                                    <span class="text-2xl font-mono font-black text-red-400">${mockResJson.riskScore}% Riesgo</span>
+                                </div>
+                                <p class="text-xs text-slate-300 leading-relaxed">${mockResJson.explanation}</p>
+                                <div>
+                                    <span class="text-[11px] uppercase font-bold text-slate-400">Patrones Sospechosos Detectados:</span>
+                                    <ul class="list-disc list-inside text-xs text-rose-300 mt-1">
+                                        ${Array.from(allPatterns).map(p => `<li>${p}</li>`).join('')}
+                                    </ul>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    resultBox.innerHTML = `<p class="text-xs text-red-400 p-2 bg-red-950/40 rounded border border-red-900/50"><i class="fa-solid fa-triangle-exclamation"></i> Error al escanear URL: ${err.message}</p>`;
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-shield-virus"></i> Escanear Enlace`;
+            }
+        }
+
+        async function toggleLiveSession() {
+            const statusIcon = document.getElementById('liveStatusIndicator');
+            const title = document.getElementById('liveStateTitle');
+            const sub = document.getElementById('liveStateSub');
+            const btn = document.getElementById('btnStartLive');
+            const transcriptBox = document.getElementById('liveTranscriptionBox');
+
+            if (!isLiveActive) {
+                isLiveActive = true;
+                statusIcon.className = "w-16 h-16 rounded-full bg-emerald-500/20 border-2 border-emerald-500 text-emerald-400 flex items-center justify-center animate-pulse shadow-lg glow-indigo";
+                title.textContent = "Sesión de Voz Activa";
+                sub.textContent = "Escuchando... Puedes hablar libremente sobre el fraude.";
+                btn.className = "bg-red-600 hover:bg-red-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg";
+                btn.innerHTML = `<i class="fa-solid fa-phone-slash"></i> Finalizar Llamada`;
+                transcriptBox.classList.remove('hidden');
+
+                document.getElementById('liveTranscripts').innerHTML = `
+                    <p class="text-emerald-400 font-bold mb-1">IA Ciberseguridad: "Hola, estoy listo. ¿En qué puedo asesorarte respecto a esta cuenta sospechosa?"</p>
+                `;
+            } else {
+                isLiveActive = false;
+                statusIcon.className = "w-16 h-16 rounded-full bg-slate-800 border-2 border-slate-700 flex items-center justify-center text-slate-500";
+                title.textContent = "Sesión Desconectada";
+                sub.textContent = "Conéctate para consultar a viva voz sobre estafas, extorsiones o reportes.";
+                btn.className = "bg-emerald-600 hover:bg-emerald-500 text-white font-semibold text-xs px-5 py-2.5 rounded-xl transition flex items-center gap-2 shadow-lg";
+                btn.innerHTML = `<i class="fa-solid fa-phone"></i> Iniciar Llamada IA`;
+            }
+        }
+
+        async function generateVoiceAlert() {
+            const status = document.getElementById('ttsStatus');
+            const playBtn = document.getElementById('playAudioBtn');
+
+            status.textContent = "Generando audio...";
+            status.className = "text-indigo-400 font-mono animate-pulse";
+
+            const alertMessage = "Atención. Advertencia de ciberseguridad. La cuenta mexxa60 punto victor chavez ha sido identificada como una cuenta falsa con alto riesgo de estafa. No compartas información ni respondas mensajes.";
+
+            const payload = {
+                contents: [{
+                    parts: [{ text: `Di de forma clara, urgente y profesional: ${alertMessage}` }]
+                }],
+                generationConfig: {
+                    responseModalities: ["AUDIO"],
+                    speechConfig: {
+                        voiceConfig: { prebuiltVoiceConfig: { voiceName: "Puck" } }
+                    }
+                }
+            };
+
+            try {
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TTS}:generateContent?key=${getApiKey()}`;
+                const response = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const part = response?.candidates?.[0]?.content?.parts?.[0];
+                const base64Audio = part?.inlineData?.data;
+                const mimeType = part?.inlineData?.mimeType || "";
+
+                if (!base64Audio) throw new Error("No se recibieron datos de audio.");
+
+                let sampleRate = 24000;
+                const match = mimeType.match(/rate=(\d+)/);
+                if (match) sampleRate = parseInt(match[1], 10);
+
+                const pcmBuffer = base64ToArrayBuffer(base64Audio);
+                const pcm16 = new Int16Array(pcmBuffer);
+                const wavBlob = pcmToWav(pcm16, sampleRate);
+
+                const player = document.getElementById('audioPlayer');
+                player.pause();
+                player.currentTime = 0;
+
+                if (audioUrl) URL.revokeObjectURL(audioUrl);
+                audioUrl = URL.createObjectURL(wavBlob);
+                player.src = audioUrl;
+
+                playBtn.disabled = false;
+                status.textContent = "¡Voz Lista!";
+                status.className = "text-emerald-400 font-mono font-semibold";
+
+                await playTTSAudio();
+
+            } catch (err) {
+                console.error("Error en Gemini TTS:", err);
+                status.textContent = "Error al generar voz";
+                status.className = "text-red-400 font-mono";
+            }
+        }
+
+        async function playTTSAudio() {
+            const player = document.getElementById('audioPlayer');
+            if (player && player.src) {
+                try {
+                    await player.play();
+                } catch (err) {
+                    if (err.name !== 'AbortError') {
+                        console.warn('Reproducción de audio restringida:', err);
+                    }
+                }
+            }
+        }
+
+        function base64ToArrayBuffer(base64) {
+            const binaryString = window.atob(base64);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+                bytes[i] = binaryString.charCodeAt(i);
+            }
+            return bytes.buffer;
+        }
+
+        function pcmToWav(pcm16Data, sampleRate) {
+            const numChannels = 1;
+            const byteRate = sampleRate * numChannels * 2;
+            const blockAlign = numChannels * 2;
+            const buffer = new ArrayBuffer(44 + pcm16Data.length * 2);
+            const view = new DataView(buffer);
+
+            writeString(view, 0, 'RIFF');
+            view.setUint32(4, 36 + pcm16Data.length * 2, true);
+            writeString(view, 8, 'WAVE');
+            writeString(view, 12, 'fmt ');
+            view.setUint32(16, 16, true);
+            view.setUint16(20, 1, true);
+            view.setUint16(22, numChannels, true);
+            view.setUint32(24, sampleRate, true);
+            view.setUint32(28, byteRate, true);
+            view.setUint16(32, blockAlign, true);
+            view.setUint16(34, 16, true);
+            writeString(view, 36, 'data');
+            view.setUint32(40, pcm16Data.length * 2, true);
+
+            for (let i = 0; i < pcm16Data.length; i++) {
+                view.setInt16(44 + i * 2, pcm16Data[i], true);
+            }
+
+            return new Blob([buffer], { type: 'audio/wav' });
+        }
+
+        function writeString(view, offset, string) {
+            for (let i = 0; i < string.length; i++) {
+                view.setUint8(offset + i, string.charCodeAt(i));
+            }
+        }
+
+        async function runOsintSearch() {
+            const query = document.getElementById('osintQueryInput').value.trim();
+            const btn = document.getElementById('btnRunOsint');
+            const resultBox = document.getElementById('osintResultBox');
+
+            if (!query) return;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Buscando...`;
+            resultBox.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-8">
+                    <div class="w-8 h-8 border-4 border-cyan-500 border-t-transparent rounded-full animate-spin mb-2"></div>
+                    <p class="text-xs text-cyan-300 font-semibold">Realizando búsqueda web OSINT con Google Search...</p>
+                </div>
+            `;
+
+            try {
+                const systemPrompt = "Eres un analista experto en inteligencia de fuentes abiertas (OSINT) y ciberseguridad. Investiga el término proporcionado buscando registros de fraude, suplantación o reportes de usuarios en la web. Resume los hallazgos en español.";
+
+                const payload = {
+                    contents: [{ role: "user", parts: [{ text: `Realiza un rastreo web de seguridad para: "${query}"` }] }],
+                    tools: [{ "google_search": {} }],
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${getApiKey()}`;
+                const data = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const candidate = data.candidates?.[0];
+                const responseText = candidate?.content?.parts?.[0]?.text || "No se encontraron resultados específicos.";
+
+                let sourcesHtml = '';
+                const groundingMetadata = candidate?.groundingMetadata;
+                if (groundingMetadata && groundingMetadata.groundingAttributions) {
+                    const sources = groundingMetadata.groundingAttributions
+                        .map(attr => ({ uri: attr.web?.uri, title: attr.web?.title }))
+                        .filter(s => s.uri && s.title);
+
+                    if (sources.length > 0) {
+                        sourcesHtml = `
+                            <div class="mt-4 border-t border-slate-800 pt-3">
+                                <h6 class="text-[11px] font-bold uppercase text-slate-400 mb-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-link text-cyan-400"></i> Fuentes Web Consultadas:
+                                </h6>
+                                <div class="flex flex-wrap gap-1.5">
+                                    ${sources.map(src => `
+                                        <a href="${src.uri}" target="_blank" rel="noopener noreferrer" class="bg-slate-950 hover:bg-slate-800 border border-slate-800 text-[11px] text-cyan-300 px-2 py-1 rounded-md transition flex items-center gap-1">
+                                            <i class="fa-solid fa-arrow-up-right-from-square text-[9px]"></i> ${src.title}
+                                        </a>
+                                    `).join('')}
+                                </div>
+                            </div>
+                        `;
+                    }
+                }
+
+                resultBox.innerHTML = `
+                    <div class="text-xs text-slate-200 leading-relaxed whitespace-pre-line">${responseText}</div>
+                    ${sourcesHtml}
+                `;
+
+                guardarHistorial('osint', { query, responseText });
+
+            } catch (err) {
+                console.error("Error en OSINT Search:", err);
+                if (err.message && err.message.includes("429") && !isUserPro) {
+                    openUpgradeModal(() => {
+                        const mockResponseText = "[MODO DEMO] El análisis OSINT revela que este término de búsqueda ('" + query + "') coincide con reportes previos en foros de ciberseguridad relacionados con esquemas de fraude y suplantación de identidad en redes sociales.\n\nSe recomienda precaución extrema, bloqueo inmediato y el cese de comunicación.";
+                        const sourcesHtml = `
+                            <div class="mt-4 border-t border-slate-800 pt-3">
+                                <h6 class="text-[11px] font-bold uppercase text-slate-400 mb-1 flex items-center gap-1">
+                                    <i class="fa-solid fa-link text-cyan-400"></i> Fuentes Web Consultadas (Simuladas):
+                                </h6>
+                                <div class="flex flex-wrap gap-1.5">
+                                    <span class="bg-slate-950 border border-slate-800 text-[11px] text-cyan-300 px-2 py-1 rounded-md flex items-center gap-1 cursor-default">
+                                        <i class="fa-solid fa-shield-halved text-[9px]"></i> ForoAntiEstafas.org
+                                    </span>
+                                    <span class="bg-slate-950 border border-slate-800 text-[11px] text-cyan-300 px-2 py-1 rounded-md flex items-center gap-1 cursor-default">
+                                        <i class="fa-solid fa-database text-[9px]"></i> CiberReportes DB
+                                    </span>
+                                </div>
+                            </div>
+                        `;
+                        resultBox.innerHTML = `
+                            <div class="opacity-90 relative">
+                                <div class="absolute -top-3 -right-3 bg-cyan-500/20 text-cyan-300 text-[10px] font-bold px-2 py-0.5 rounded-full border border-cyan-500/30">DATOS SIMULADOS</div>
+                                <div class="text-xs text-slate-200 leading-relaxed whitespace-pre-line">${mockResponseText}</div>
+                                ${sourcesHtml}
+                            </div>
+                        `;
+                    });
+                } else {
+                    resultBox.innerHTML = `<p class="text-xs text-red-400 p-2 bg-red-950/40 rounded border border-red-900/50"><i class="fa-solid fa-triangle-exclamation"></i> Error durante la búsqueda web: ${err.message}</p>`;
+                }
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-magnifying-glass"></i> Buscar en Web`;
+            }
+        }
+
+        async function generateAwarenessImage() {
+            const promptText = document.getElementById('genImagePrompt').value.trim();
+            const aspectRatio = document.getElementById('genImageAspect').value;
+            const btn = document.getElementById('btnGenImage');
+            const resultBox = document.getElementById('genImageResult');
+
+            if (!promptText) return;
+
+            btn.disabled = true;
+            btn.innerHTML = `<i class="fa-solid fa-spinner animate-spin"></i> Procesando...`;
+            resultBox.innerHTML = `
+                <div class="flex flex-col items-center justify-center py-10">
+                    <div class="w-10 h-10 border-4 border-emerald-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                    <p class="text-xs text-emerald-300 font-semibold">Generando/Editando imagen con Gemini 3.1 Flash Image...</p>
+                </div>
+            `;
+
+            try {
+                imageConversationHistory.push({
+                    role: "user",
+                    parts: [{ text: promptText }]
+                });
+
+                const payload = {
+                    contents: imageConversationHistory,
+                    generationConfig: {
+                        responseModalities: ['IMAGE'],
+                        imageConfig: { aspectRatio: aspectRatio }
+                    }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_IMAGE}:generateContent?key=${getApiKey()}`;
+                const response = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const candidate = response?.candidates?.[0];
+                if (candidate?.content) {
+                    imageConversationHistory.push(candidate.content);
+                }
+
+                const part = candidate?.content?.parts?.find(p => p.inlineData);
+                if (!part) throw new Error("No se devolvieron datos de imagen.");
+
+                const imageUrl = `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`;
+
+                resultBox.innerHTML = `
+                    <div class="flex flex-col items-center gap-3 w-full">
+                        <img src="${imageUrl}" alt="Cartel Generado" class="max-h-[350px] w-auto rounded-xl border border-slate-700 shadow-2xl object-contain">
+                        <div class="flex gap-2">
+                            <a href="${imageUrl}" download="advertencia_cuenta_falsa.png" class="bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-semibold px-4 py-2 rounded-xl transition flex items-center gap-1.5">
+                                <i class="fa-solid fa-download"></i> Descargar Imagen
+                            </a>
+                        </div>
+                    </div>
+                `;
+
+            } catch (err) {
+                console.error("Error generando imagen:", err);
+                resultBox.innerHTML = `<p class="text-xs text-red-400">Error al procesar la imagen: ${err.message}</p>`;
+            } finally {
+                btn.disabled = false;
+                btn.innerHTML = `<i class="fa-solid fa-palette"></i> Generar / Modificar`;
+            }
+        }
+
+        async function sendSecurityChatMessage() {
+            const input = document.getElementById('chatInput');
+            const text = input.value.trim();
+            const btn = document.getElementById('btnSendChat');
+            const historyBox = document.getElementById('chatHistoryBox');
+
+            if (!text) return;
+
+            input.value = '';
+
+            historyBox.innerHTML += `
+                <div class="bg-slate-900 border border-slate-800 p-2.5 rounded-xl text-xs text-slate-200 self-end max-w-[85%]">
+                    <strong>Tú:</strong> ${text}
+                </div>
+            `;
+            historyBox.scrollTop = historyBox.scrollHeight;
+
+            chatConversationHistory.push({ role: "user", parts: [{ text: text }] });
+            btn.disabled = true;
+
+            const typingId = `typing-${Date.now()}`;
+            historyBox.innerHTML += `
+                <div id="${typingId}" class="bg-indigo-950/60 border border-indigo-800/40 p-2.5 rounded-xl text-xs text-indigo-300 flex items-center gap-2">
+                    <i class="fa-solid fa-spinner animate-spin"></i> Asesor procesando respuesta...
+                </div>
+            `;
+            historyBox.scrollTop = historyBox.scrollHeight;
+
+            try {
+                const systemPrompt = "Eres un especialista senior en ciberseguridad, respuesta a incidentes y prevención de fraude en redes sociales. Proporciona asesoramiento práctico y pasos técnicos o legales en español.";
+
+                const payload = {
+                    contents: chatConversationHistory,
+                    systemInstruction: { parts: [{ text: systemPrompt }] }
+                };
+
+                const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_TEXT}:generateContent?key=${getApiKey()}`;
+                const data = await fetchGeminiWithBackoff(apiUrl, payload);
+
+                const botText = data.candidates?.[0]?.content?.parts?.[0]?.text || "No pude generar una respuesta.";
+
+                chatConversationHistory.push({ role: "model", parts: [{ text: botText }] });
+
+                document.getElementById(typingId)?.remove();
+
+                historyBox.innerHTML += `
+                    <div class="bg-indigo-950/60 border border-indigo-800/40 p-2.5 rounded-xl text-xs text-indigo-200 leading-relaxed whitespace-pre-line">
+                        <strong><i class="fa-solid fa-shield"></i> Asesor IA:</strong> ${botText}
+                    </div>
+                `;
+                historyBox.scrollTop = historyBox.scrollHeight;
+
+            } catch (err) {
+                console.error("Error en chat:", err);
+                document.getElementById(typingId)?.remove();
+                historyBox.innerHTML += `
+                    <div class="bg-red-950/60 border border-red-800/40 p-2.5 rounded-xl text-xs text-red-300">
+                        Error al conectar con el Asesor IA: ${err.message}
+                    </div>
+                `;
+            } finally {
+                btn.disabled = false;
+            }
+        }
+    </script>
+</body>
+
+</html>
