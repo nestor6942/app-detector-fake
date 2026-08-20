@@ -994,12 +994,16 @@
             const planType = plan === 'lifetime' ? 'lifetime' : 'monthly';
 
             const toast = document.createElement('div');
-            toast.className = "fixed bottom-5 right-5 bg-slate-900 border border-indigo-500/50 text-white px-6 py-4 rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.3)] z-[100] flex items-center gap-3 transition-all duration-300";
-            toast.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 text-xl"></i><div><p class="font-bold text-sm">Conectando con Stripe Checkout</p><p class="text-xs text-slate-400">Generando sesión de pago segura...</p></div>`;
+            toast.className = "fixed bottom-5 right-5 bg-slate-900 border border-indigo-500/50 text-white px-6 py-4 rounded-xl shadow-[0_0_30px_rgba(99,102,241,0.3)] z-[100] flex items-center gap-3 transition-all duration-300 max-w-sm";
+            toast.innerHTML = `<i class="fa-solid fa-circle-notch fa-spin text-indigo-400 text-xl flex-shrink-0"></i><div><p class="font-bold text-sm">Conectando con Stripe Checkout</p><p class="text-xs text-slate-400">Generando sesión de pago segura...</p></div>`;
             document.body.appendChild(toast);
 
-            // Intentar primero con la ruta actual y luego con localhost:3000
-            const endpoints = ['/create-checkout-session', 'http://localhost:3000/create-checkout-session'];
+            // Intentar primero con Render (producción), luego relativo y finalmente localhost:3000
+            const endpoints = [
+                'https://app-detector-fake.onrender.com/create-checkout-session',
+                '/create-checkout-session',
+                'http://localhost:3000/create-checkout-session'
+            ];
             let checkoutUrl = null;
             let lastError = null;
 
@@ -1008,7 +1012,10 @@
                     const response = await fetch(endpoint, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
-                        body: JSON.stringify({ planType })
+                        body: JSON.stringify({ 
+                            planType,
+                            originUrl: window.location.origin 
+                        })
                     });
                     if (response.ok) {
                         const data = await response.json();
@@ -1023,20 +1030,21 @@
             }
 
             if (checkoutUrl) {
-                toast.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 text-xl"></i><div><p class="font-bold text-sm text-emerald-300">¡Redirigiendo a Stripe!</p><p class="text-xs text-slate-400">Cargando pasarela de pago oficial...</p></div>`;
+                toast.innerHTML = `<i class="fa-solid fa-circle-check text-emerald-400 text-xl flex-shrink-0"></i><div><p class="font-bold text-sm text-emerald-300">¡Redirigiendo a Stripe!</p><p class="text-xs text-slate-400">Cargando pasarela de pago oficial...</p></div>`;
                 window.location.href = checkoutUrl;
             } else {
                 toast.innerHTML = `
-                    <div class="flex flex-col gap-1 max-w-sm">
+                    <div class="flex flex-col gap-1.5">
                         <div class="flex items-center gap-2 text-amber-400 font-bold text-sm">
-                            <i class="fa-solid fa-triangle-exclamation"></i> Servidor Backend no detectado
+                            <i class="fa-solid fa-triangle-exclamation"></i> Error al conectar con pasarela
                         </div>
                         <p class="text-xs text-slate-300 leading-relaxed">
-                            Para abrir la pasarela real de cobro de Stripe, asegúrate de correr el servidor ejecutando en tu terminal:
+                            No se pudo generar la sesión de pago de Stripe.
                         </p>
-                        <code class="bg-black/60 text-emerald-400 text-[11px] p-1.5 rounded font-mono block my-1">node server.js</code>
-                        <p class="text-[11px] text-slate-400">Y luego abre tu navegador en: <strong class="text-white">http://localhost:3000</strong></p>
-                        <button onclick="this.parentElement.parentElement.remove()" class="mt-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1 px-3 rounded-lg self-end">Entendido</button>
+                        <p class="text-[11px] text-slate-400">
+                            Asegúrate de que el backend en Render esté activo o inicia el servidor local ejecutando <code class="text-emerald-400 bg-black/60 px-1 py-0.5 rounded">node server.js</code>.
+                        </p>
+                        <button onclick="this.parentElement.parentElement.remove()" class="mt-1 bg-indigo-600 hover:bg-indigo-500 text-white text-xs py-1 px-3 rounded-lg self-end font-semibold">Entendido</button>
                     </div>
                 `;
             }

@@ -70,7 +70,9 @@ app.post('/create-checkout-session', async (req, res) => {
 
     const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
     const host = req.headers['x-forwarded-host'] || req.get('host');
-    const baseUrl = process.env.BASE_URL || `${protocol}://${host}`;
+    const baseUrl = (req.body.originUrl && (req.body.originUrl.startsWith('http://') || req.body.originUrl.startsWith('https://')))
+      ? req.body.originUrl
+      : (process.env.BASE_URL || `${protocol}://${host}`);
 
     const sessionConfig = {
       payment_method_types: ['card'],
