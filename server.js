@@ -68,12 +68,16 @@ app.post('/create-checkout-session', async (req, res) => {
             quantity: 1
           }];
 
+    const protocol = req.headers['x-forwarded-proto'] || req.protocol || 'http';
+    const host = req.headers['x-forwarded-host'] || req.get('host');
+    const baseUrl = process.env.BASE_URL || `${protocol}://${host}`;
+
     const sessionConfig = {
       payment_method_types: ['card'],
       line_items: lineItems,
       mode: planType === 'lifetime' ? 'payment' : 'subscription',
-      success_url: `http://localhost:${PORT}/success.html`,
-      cancel_url: `http://localhost:${PORT}/?cancelled=true`
+      success_url: `${baseUrl}/success.html?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${baseUrl}/?cancelled=true`
     };
 
     if (planType !== 'lifetime') {
