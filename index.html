@@ -621,7 +621,7 @@
 
         // --- 2. FIREBASE CONFIGURATION ---
         const firebaseConfig = {
-            apiKey: "__FIREBASE_API_KEY__",
+            apiKey: "AIzaSyBwnBkkjNwmvpm1Qq9zmdGbX185tY8Rod4",
             authDomain: "advertencia-fake-app.firebaseapp.com",
             projectId: "advertencia-fake-app",
             storageBucket: "advertencia-fake-app.firebasestorage.app",
@@ -633,6 +633,7 @@
         let db = null;
         let currentUser = null;
         let isUserPro = false;
+        let initError = null;
 
         try {
             if (typeof firebase !== 'undefined' && firebaseConfig.apiKey && firebaseConfig.apiKey !== "__FIREBASE_API_KEY__") {
@@ -670,12 +671,17 @@
                 });
             }
         } catch (e) {
-            console.info("Firebase en modo estático/local.");
+            console.error("Error inicializando Firebase:", e);
+            initError = e;
         }
 
         function loginWithGoogle() {
+            if (initError) {
+                alert("Hubo un error al inicializar Firebase: " + initError.message + ". Revisa la consola.");
+                return;
+            }
             if (!auth) {
-                alert("Para activar autenticación con Google, asegúrate de configurar tu FIREBASE_API_KEY en el archivo .env o servidor.");
+                alert("Para activar autenticación con Google, asegúrate de configurar tu FIREBASE_API_KEY en el archivo .env o servidor. (Firebase no cargó)");
                 return;
             }
             const provider = new firebase.auth.GoogleAuthProvider();
