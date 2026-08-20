@@ -129,8 +129,8 @@ app.get('/config', (req, res) => {
 });
 
 // ─── Start ────────────────────────────────────────────────────────────────────
-app.listen(PORT, () => {
-  console.log(`\n🚀 Servidor corriendo en http://localhost:${PORT}`);
+app.listen(PORT, '0.0.0.0', () => {
+  console.log(`\n🚀 Servidor corriendo en http://localhost:${PORT} y http://127.0.0.1:${PORT}`);
   console.log(`🔒 Stripe integrado con Radar (Fraud Detection)`);
   console.log(`📦 Billing (mensual) y Payments (de por vida) listos`);
 });
