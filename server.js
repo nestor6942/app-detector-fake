@@ -1,8 +1,9 @@
-﻿require('dotenv').config();
+require('dotenv').config();
 const express = require('express');
 const stripe = require('stripe')(process.env.STRIPE_SECRET_KEY);
 const cors = require('cors');
 const path = require('path');
+const fs = require('fs');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -13,6 +14,24 @@ app.use(cors());
 app.use('/webhook', express.raw({ type: 'application/json' }));
 app.use(express.json());
 // Servir el index.html estático
+// Ruta raíz: inyecta la API KEY de Firebase desde variables de entorno para evitar exponerla en el repositorio
+app.get('/', (req, res) => {
+  try {
+    const indexPath = path.join(__dirname, 'index.html');
+    let html = fs.readFileSync(indexPath, 'utf8');
+
+    const firebaseApiKey = process.env.FIREBASE_API_KEY || '';
+    html = html.replace(/__FIREBASE_API_KEY__/g, firebaseApiKey);
+
+    res.setHeader('Content-Type', 'text/html');
+    res.send(html);
+  } catch (err) {
+    console.error('Error leyendo index.html para inyección:', err);
+    res.status(500).send('Error interno');
+  }
+});
+
+// Servir archivos estáticos restantes (JS, CSS, assets)
 app.use(express.static(path.join(__dirname)));
 
 // ─── POST /create-checkout-session ───────────────────────────────────────────
@@ -54,9 +73,7 @@ app.post('/create-checkout-session', async (req, res) => {
       line_items: lineItems,
       mode: planType === 'lifetime' ? 'payment' : 'subscription',
       success_url: `http://localhost:${PORT}/success.html`,
-      cancel_url: `http://localhost:${PORT}/?cancelled=true`,
-      // Radar: Fraud protection activo por default en modo test
-      radar_options: {}
+      cancel_url: `http://localhost:${PORT}/?cancelled=true`
     };
 
     if (planType !== 'lifetime') {
